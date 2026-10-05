@@ -1,129 +1,112 @@
 const { supabase } = require('../config/supabase');
 
-let mockFactories = [
+let mockAssets = [
   {
-    id: 'a1000000-0000-0000-0000-000000000001',
-    code: 'FT-BKK-01',
-    name: 'โรงงานบางนา อุตสาหกรรมชิ้นส่วนยานยนต์',
-    location: 'สมุทรปราการ',
-    contact_person: 'คุณอนุรักษ์',
-    contact_phone: '081-445-8899'
+    id: 1,
+    asset_code: 'CNC-5AX-2023-018',
+    name: 'เครื่องกลึง CNC 5 แกน ความแม่นยำสูง (Line A)',
+    model: 'VX-500 Pro High-Precision',
+    manufacturer: 'Mazak Japan',
+    serial_number: 'CNC-5AX-2023-018',
+    department: 'แผนก Machining & Tooling',
+    location_id: 1,
+    location_name: 'โรงงานบางนา - อาคาร Machining',
+    status: 'active',
+    status_label: 'operational',
+    next_pm_date: '2026-11-15',
+    last_service_date: '2026-08-10',
+    specs: { 'กำลังมอเตอร์': '15 kW', 'ความเร็วรอบสูงสุด': '12,000 RPM', 'ระบบแรงดันลม': '7.0 Bar' },
+    qr_code: 'PM-QR-CNC-018'
   },
   {
-    id: 'a1000000-0000-0000-0000-000000000002',
-    code: 'FT-RYG-02',
-    name: 'โรงงานมาบตาพุด เคมีภัณฑ์และปิโตรเคมี',
-    location: 'ระยอง',
-    contact_person: 'คุณวิภาวรรณ',
-    contact_phone: '089-112-3344'
+    id: 2,
+    asset_code: 'HYD-PUMP-500T-04',
+    name: 'ปั๊มไฮดรอลิกแรงดันสูง แท่นปั๊ม 500 ตัน',
+    model: 'HP-500H Pro Series',
+    manufacturer: 'Rexroth Bosch Group',
+    serial_number: 'HYD-PUMP-500T-04',
+    department: 'แผนก Heavy Pressing',
+    location_id: 1,
+    location_name: 'โรงงานบางนา - อาคาร Heavy Pressing',
+    status: 'under_maintenance',
+    status_label: 'warning',
+    next_pm_date: '2026-10-18',
+    last_service_date: '2026-07-12',
+    specs: { 'อัตราการไหล': '180 L/min', 'อุณหภูมิน้ำมัน': '68 °C', 'แรงดันระบบ': '250 Bar' },
+    qr_code: 'PM-QR-HYD-500T'
   },
   {
-    id: 'a1000000-0000-0000-0000-000000000003',
-    code: 'FT-AYT-03',
-    name: 'โรงงานนวนคร อิเล็กทรอนิกส์และเซมิคอนดักเตอร์',
-    location: 'ปทุมธานี',
-    contact_person: 'คุณสมเกียรติ',
-    contact_phone: '086-778-9900'
+    id: 3,
+    asset_code: 'AC-SCREW-75-09',
+    name: 'Air Compressor สกรูอุตสาหกรรม 75kW',
+    model: 'Atlas-GA75 VSD+',
+    manufacturer: 'Atlas Copco Sweden',
+    serial_number: 'AC-SCREW-75-09',
+    department: 'ระบบ Utility & พลังงานลมกลาง',
+    location_id: 2,
+    location_name: 'โรงงานมาบตาพุด - อาคาร Utility',
+    status: 'active',
+    status_label: 'operational',
+    next_pm_date: '2026-12-01',
+    last_service_date: '2026-09-02',
+    specs: { 'แรงดันลมจ่าย': '8.5 Bar', 'จุดน้ำค้าง (Dew Point)': '3 °C', 'ระบบระบายความร้อน': 'Air-cooled' },
+    qr_code: 'PM-QR-COMP-75'
+  },
+  {
+    id: 4,
+    asset_code: 'ROBOT-WELD-6AX-11',
+    name: 'หุ่นยนต์เชื่อมประกอบ Robotic Arm 6 แกน #2',
+    model: 'KR-CYBERTECH Arc Nano',
+    manufacturer: 'KUKA Robotics Germany',
+    serial_number: 'ROBOT-WELD-6AX-11',
+    department: 'แผนก Robotic Assembly',
+    location_id: 3,
+    location_name: 'โรงงานนวนคร - อาคาร Robotic Assembly',
+    status: 'inactive',
+    status_label: 'breakdown',
+    next_pm_date: '2026-10-08',
+    last_service_date: '2026-08-25',
+    specs: { 'น้ำหนักบรรทุกสูงสุด': '16 kg', 'ระยะเอื้อมแขน': '2,013 mm', 'ความแม่นยำ': '±0.04 mm' },
+    qr_code: 'PM-QR-ROBOT-W11'
   }
 ];
 
-let mockMachines = [
-  {
-    id: 'b1000000-0000-0000-0000-000000000001',
-    factory_id: 'a1000000-0000-0000-0000-000000000001',
-    factory_name: 'โรงงานบางนา อุตสาหกรรมชิ้นส่วนยานยนต์',
-    name: 'เครื่องกลึง CNC 5 แกน (Line A)',
-    serial_number: 'CNC-5AX-2023-018',
-    model: 'VX-500 Pro',
-    brand: 'Mazak',
-    department: 'แผนก Machining',
-    installation_date: '2023-03-15',
-    status: 'operational',
-    next_pm_date: '2026-11-15',
-    last_service_date: '2026-08-10',
-    specs: { power: '15kW', max_rpm: 12000, pressure: '7 Bar' },
-    qr_code: 'QR-CNC-018'
-  },
-  {
-    id: 'b1000000-0000-0000-0000-000000000002',
-    factory_id: 'a1000000-0000-0000-0000-000000000001',
-    factory_name: 'โรงงานบางนา อุตสาหกรรมชิ้นส่วนยานยนต์',
-    name: 'ปั๊มไฮดรอลิกแรงดันสูง Press 500T',
-    serial_number: 'HYD-PUMP-500T-04',
-    model: 'HP-500H',
-    brand: 'Rexroth',
-    department: 'แผนก Pressing',
-    installation_date: '2022-07-20',
-    status: 'warning',
-    next_pm_date: '2026-10-18',
-    last_service_date: '2026-07-12',
-    specs: { flow_rate: '180 L/min', oil_temp: '68C', pressure: '250 Bar' },
-    qr_code: 'QR-HYD-500T'
-  },
-  {
-    id: 'b1000000-0000-0000-0000-000000000003',
-    factory_id: 'a1000000-0000-0000-0000-000000000002',
-    factory_name: 'โรงงานมาบตาพุด เคมีภัณฑ์และปิโตรเคมี',
-    name: 'Air Compressor สกรูอุตสาหกรรม 75kW',
-    serial_number: 'AC-SCREW-75-09',
-    model: 'Atlas-GA75',
-    brand: 'Atlas Copco',
-    department: 'ระบบ Utility & พลังงาน',
-    installation_date: '2021-11-10',
-    status: 'operational',
-    next_pm_date: '2026-12-01',
-    last_service_date: '2026-09-02',
-    specs: { pressure_bar: 8.5, dewpoint: '3C', cooling: 'Air-cooled' },
-    qr_code: 'QR-COMP-75'
-  },
-  {
-    id: 'b1000000-0000-0000-0000-000000000004',
-    factory_id: 'a1000000-0000-0000-0000-000000000003',
-    factory_name: 'โรงงานนวนคร อิเล็กทรอนิกส์และเซมิคอนดักเตอร์',
-    name: 'หุ่นยนต์เชื่อมประกอบ Robotic Arm #2',
-    serial_number: 'ROBOT-WELD-6AX-11',
-    model: 'KR-CYBERTECH',
-    brand: 'KUKA',
-    department: 'แผนก Robotic Assembly',
-    installation_date: '2024-01-18',
-    status: 'breakdown',
-    next_pm_date: '2026-10-08',
-    last_service_date: '2026-08-25',
-    specs: { payload: '16kg', reach: '2013mm', repeatability: '0.04mm' },
-    qr_code: 'QR-ROBOT-W11'
-  }
+let mockLocations = [
+  { id: 1, code: 'LOC-BKK-01', name: 'โรงงานบางนา อุตสาหกรรมชิ้นส่วนยานยนต์', address: 'สมุทรปราการ กม.18' },
+  { id: 2, code: 'LOC-RYG-02', name: 'โรงงานมาบตาพุด เคมีภัณฑ์และปิโตรเคมี', address: 'ระยอง' },
+  { id: 3, code: 'LOC-AYT-03', name: 'โรงงานนวนคร อิเล็กทรอนิกส์และเซมิคอนดักเตอร์', address: 'ปทุมธานี' }
 ];
 
 let mockPMSchedules = [
   {
-    id: 'pm-01',
-    machine_id: 'b1000000-0000-0000-0000-000000000004',
-    machine_name: 'หุ่นยนต์เชื่อมประกอบ Robotic Arm #2',
-    title: 'ตรวจสอบระยะสลักเกลียว ข้อต่อแกน 1-6 และระบบหล่อลื่นจาระบี',
-    frequency_days: 60,
-    due_date: '2026-10-08',
+    id: 1,
+    asset_id: 4,
+    asset_name: 'หุ่นยนต์เชื่อมประกอบ Robotic Arm 6 แกน #2',
+    title: 'ตรวจสอบระยะสลักเกลียว ข้อต่อแกน 1-6 และอัดจาระบีเกรดหุ่นยนต์',
+    interval_days: 60,
+    next_due_date: '2026-10-08',
     status: 'overdue',
-    checklist: ['ตรวจสอบสายไฟหุ้มข้อต่อ', 'เช็คความแม่นยำ Zero Point', 'วัดกระแสไฟฟ้าขณะหมุนแกน']
+    checklist: ['ตรวจสอบสายไฟหุ้มข้อต่อแกน 1-6', 'เช็คความแม่นยำ Zero Point Calibration', 'วัดกระแสไฟฟ้าขณะหมุนแกนสวิง']
   },
   {
-    id: 'pm-02',
-    machine_id: 'b1000000-0000-0000-0000-000000000002',
-    machine_name: 'ปั๊มไฮดรอลิกแรงดันสูง Press 500T',
-    title: 'ถ่ายน้ำมันไฮดรอลิก ตรวจไส้กรอง และเช็คระดับแรงสั่นสะเทือนมอเตอร์',
-    frequency_days: 90,
-    due_date: '2026-10-18',
+    id: 2,
+    asset_id: 2,
+    asset_name: 'ปั๊มไฮดรอลิกแรงดันสูง แท่นปั๊ม 500 ตัน',
+    title: 'ถ่ายน้ำมันไฮดรอลิก เปลี่ยนไส้กรอง และตรวจเช็คการสั่นสะเทือนปั๊ม',
+    interval_days: 90,
+    next_due_date: '2026-10-18',
     status: 'due_soon',
-    checklist: ['วัดอุณหภูมิน้ำมัน', 'เช็ครอยรั่วข้อต่อท่อแรงดัน', 'วัดการสั่นสะเทือนแกนเพลา']
+    checklist: ['วัดอุณหภูมิและความหนืดน้ำมัน', 'เช็ครอยรั่วข้อต่อท่อแรงดันสูง', 'วัดค่าแรงสั่นสะเทือน Coupling']
   },
   {
-    id: 'pm-03',
-    machine_id: 'b1000000-0000-0000-0000-000000000001',
-    machine_name: 'เครื่องกลึง CNC 5 แกน (Line A)',
-    title: 'บำรุงรักษาเชิงป้องกันประจำไตรมาส Calibration แกน X/Y/Z',
-    frequency_days: 90,
-    due_date: '2026-11-15',
+    id: 3,
+    asset_id: 1,
+    asset_name: 'เครื่องกลึง CNC 5 แกน ความแม่นยำสูง (Line A)',
+    title: 'บำรุงรักษาเชิงป้องกันประจำไตรมาสและสอบเทียบความเที่ยงตรงเลเซอร์',
+    interval_days: 90,
+    next_due_date: '2026-11-15',
     status: 'upcoming',
-    checklist: ['ตรวจสอบแรงตึงสายพาน Spindle', 'เช็คระบบหล่อเย็น Coolant Filter', 'ทดสอบ Emergency Stop']
+    checklist: ['ตรวจแรงตึงสายพาน Spindle Drive', 'ทำความสะอาดระบบหล่อเย็น Coolant Filter', 'ทดสอบระบบความปลอดภัย Safety Interlock']
   }
 ];
 
@@ -131,28 +114,64 @@ const machineController = {
   // GET /api/machines
   async getMachines(req, res) {
     try {
-      const { factory_id, status } = req.query;
-      let query = supabase.from('machines').select(`
+      const { location_id, status } = req.query;
+
+      let query = supabase.from('assets').select(`
         *,
-        factories:factory_id (id, name, code, location)
+        locations:location_id (id, name, code, address),
+        asset_categories:category_id (id, name)
       `).order('name', { ascending: true });
 
-      if (factory_id) query = query.eq('factory_id', factory_id);
+      if (location_id) query = query.eq('location_id', location_id);
       if (status) query = query.eq('status', status);
 
       const { data, error } = await query;
+
       if (!error && data && data.length > 0) {
-        return res.status(200).json({ success: true, count: data.length, data });
+        const formatted = data.map(item => ({
+          id: item.id,
+          factory_id: item.location_id,
+          factory_name: item.locations?.name || 'โรงงานอุตสาหกรรม',
+          name: item.name,
+          serial_number: item.serial_number || item.asset_code,
+          model: item.model,
+          brand: item.manufacturer,
+          department: item.notes || 'ส่วนงานผลิต',
+          installation_date: item.purchase_date || item.created_at,
+          status: item.status === 'active' ? 'operational' : item.status === 'under_maintenance' ? 'warning' : 'breakdown',
+          next_pm_date: '2026-11-15',
+          last_service_date: '2026-08-10',
+          specs: { 'Model': item.model || '', 'Manufacturer': item.manufacturer || '' },
+          qr_code: `QR-${item.asset_code}`
+        }));
+        return res.status(200).json({ success: true, count: formatted.length, data: formatted });
       }
 
-      let filtered = [...mockMachines];
-      if (factory_id) filtered = filtered.filter(m => m.factory_id === factory_id);
-      if (status) filtered = filtered.filter(m => m.status === status);
+      // Fallback
+      let filtered = [...mockAssets];
+      if (location_id) filtered = filtered.filter(m => String(m.location_id) === String(location_id));
 
-      return res.status(200).json({ success: true, source: 'local_fallback', count: filtered.length, data: filtered });
+      const mapped = filtered.map(m => ({
+        id: m.id,
+        factory_id: m.location_id,
+        factory_name: m.location_name,
+        name: m.name,
+        serial_number: m.serial_number,
+        model: m.model,
+        brand: m.manufacturer,
+        department: m.department,
+        installation_date: '2023-03-15',
+        status: m.status_label,
+        next_pm_date: m.next_pm_date,
+        last_service_date: m.last_service_date,
+        specs: m.specs,
+        qr_code: m.qr_code
+      }));
+
+      return res.status(200).json({ success: true, source: 'local_fallback', count: mapped.length, data: mapped });
     } catch (err) {
-      console.error('[MachineController.getMachines error]', err);
-      return res.status(200).json({ success: true, source: 'fallback_error', data: mockMachines });
+      console.error('[machineController.getMachines error]', err);
+      return res.status(200).json({ success: true, source: 'fallback_error', data: mockAssets });
     }
   },
 
@@ -160,34 +179,11 @@ const machineController = {
   async getMachineById(req, res) {
     try {
       const { id } = req.params;
-      const { data, error } = await supabase
-        .from('machines')
-        .select(`
-          *,
-          factories:factory_id (*),
-          repair_tickets:repair_tickets(*),
-          service_reports:service_reports(*),
-          pm_schedules:pm_schedules(*)
-        `)
-        .eq('id', id)
-        .single();
-
-      if (!error && data) {
-        return res.status(200).json({ success: true, data });
+      const found = mockAssets.find(m => String(m.id) === String(id) || m.asset_code === id);
+      if (found) {
+        return res.status(200).json({ success: true, data: found });
       }
-
-      const machine = mockMachines.find(m => m.id === id || m.serial_number === id);
-      if (machine) {
-        return res.status(200).json({
-          success: true,
-          data: {
-            ...machine,
-            pm_schedules: mockPMSchedules.filter(p => p.machine_id === machine.id)
-          }
-        });
-      }
-
-      return res.status(404).json({ success: false, message: 'ไม่พบข้อมูลเครื่องจักร' });
+      return res.status(404).json({ success: false, message: 'ไม่พบเครื่องจักร' });
     } catch (err) {
       return res.status(500).json({ success: false, message: err.message });
     }
@@ -196,13 +192,21 @@ const machineController = {
   // GET /api/factories
   async getFactories(req, res) {
     try {
-      const { data, error } = await supabase.from('factories').select('*');
+      const { data, error } = await supabase.from('locations').select('*');
       if (!error && data && data.length > 0) {
-        return res.status(200).json({ success: true, count: data.length, data });
+        const mapped = data.map(l => ({
+          id: l.id,
+          code: l.code || `LOC-${l.id}`,
+          name: l.name,
+          location: l.address || l.name,
+          contact_person: 'ฝ่ายบริหารงานซ่อมบำรุง',
+          contact_phone: '02-888-9999'
+        }));
+        return res.status(200).json({ success: true, count: mapped.length, data: mapped });
       }
-      return res.status(200).json({ success: true, source: 'local_fallback', data: mockFactories });
+      return res.status(200).json({ success: true, source: 'local_fallback', data: mockLocations });
     } catch (err) {
-      return res.status(200).json({ success: true, source: 'fallback_error', data: mockFactories });
+      return res.status(200).json({ success: true, source: 'fallback_error', data: mockLocations });
     }
   },
 
@@ -211,14 +215,32 @@ const machineController = {
     try {
       const { data, error } = await supabase.from('pm_schedules').select(`
         *,
-        machines:machine_id (id, name, serial_number, department)
-      `).order('due_date', { ascending: true });
+        assets:asset_id (id, name, asset_code)
+      `).order('next_due_date', { ascending: true });
 
       if (!error && data && data.length > 0) {
-        return res.status(200).json({ success: true, count: data.length, data });
+        const mapped = data.map(p => ({
+          id: p.id,
+          machine_id: p.asset_id,
+          machine_name: p.assets?.name || 'เครื่องจักร',
+          title: p.title,
+          frequency_days: p.interval_days,
+          due_date: p.next_due_date,
+          status: 'upcoming',
+          checklist: ['ตรวจเช็คระดับสารหล่อลื่น', 'ทดสอบระบบการทำงานฉุกเฉิน']
+        }));
+        return res.status(200).json({ success: true, count: mapped.length, data: mapped });
       }
 
-      return res.status(200).json({ success: true, source: 'local_fallback', data: mockPMSchedules });
+      return res.status(200).json({
+        success: true,
+        source: 'local_fallback',
+        data: mockPMSchedules.map(p => ({
+          ...p,
+          frequency_days: p.interval_days,
+          due_date: p.next_due_date
+        }))
+      });
     } catch (err) {
       return res.status(200).json({ success: true, source: 'fallback_error', data: mockPMSchedules });
     }

@@ -1,191 +1,264 @@
--- ================================================================
--- PM-PRO DATABASE SCHEMA FOR SUPABASE
--- Systems covered:
--- 1. Service Requests & Repair Tickets (แอปแจ้งซ่อมและขอบริการ)
--- 2. Field Service Reports (แอปรายงานงานบริการสำหรับช่าง)
--- 3. Machine Registry & Preventive Maintenance (ระบบประวัติเครื่องจักรและบำรุงรักษา)
--- 4. Quotations & Spare Parts Tracking (ระบบติดตามใบเสนอราคาและอะไหล่)
--- ================================================================
+-- =====================================================================
+-- Maintenance Request & Work Tracking System
+-- Database: PostgreSQL 13+
+-- =====================================================================
 
--- Enable UUID extension
-create extension if not exists "uuid-ossp";
+-- ---------- ENUM types ----------
+CREATE TYPE user_role AS ENUM ('requester', 'technician', 'supervisor', 'admin');
+CREATE TYPE request_status AS ENUM ('new', 'reviewing', 'approved', 'rejected', 'in_progress', 'on_hold', 'completed', 'closed', 'cancelled');
+CREATE TYPE priority_level AS ENUM ('low', 'medium', 'high', 'critical');
+CREATE TYPE work_order_status AS ENUM ('open', 'assigned', 'in_progress', 'waiting_parts', 'completed', 'verified', 'cancelled');
+CREATE TYPE work_type AS ENUM ('corrective', 'preventive', 'inspection', 'installation');
+CREATE TYPE asset_status AS ENUM ('active', 'under_maintenance', 'inactive', 'retired');
+CREATE TYPE task_status AS ENUM ('todo', 'doing', 'done', 'skipped');
 
--- 1. FACTORIES / CLIENT PLANTS (โรงงานและหน่วยงาน)
-create table if not exists factories (
-  id uuid primary key default gen_random_uuid(),
-  code text unique not null,
-  name text not null,
-  location text,
-  contact_person text,
-  contact_phone text,
-  created_at timestamptz default now()
+-- ---------- Organization ----------
+CREATE TABLE departments (
+    id          SERIAL PRIMARY KEY,
+    name        VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 2. MACHINES & EQUIPMENT (เครื่องจักรและอุปกรณ์)
-create table if not exists machines (
-  id uuid primary key default gen_random_uuid(),
-  factory_id uuid references factories(id) on delete cascade,
-  name text not null,
-  serial_number text unique not null,
-  model text,
-  brand text,
-  department text,
-  installation_date date,
-  status text default 'operational' check (status in ('operational', 'warning', 'breakdown', 'maintenance')),
-  next_pm_date date,
-  last_service_date date,
-  specs jsonb default '{}'::jsonb,
-  qr_code text,
-  created_at timestamptz default now()
+CREATE TABLE users (
+    id            SERIAL PRIMARY KEY,
+    employee_code VARCHAR(30) UNIQUE,
+    full_name     VARCHAR(150) NOT NULL,
+    email         VARCHAR(150) NOT NULL UNIQUE,
+    phone         VARCHAR(30),
+    password_hash VARCHAR(255) NOT NULL,
+    role          user_role NOT NULL DEFAULT 'requester',
+    department_id INT REFERENCES departments(id) ON DELETE SET NULL,
+    skills        TEXT,                       -- ทักษะช่าง เช่น ไฟฟ้า, เครื่องกล
+    is_active     BOOLEAN NOT NULL DEFAULT TRUE,
+    last_login_at TIMESTAMPTZ,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 3. REPAIR & SERVICE TICKETS (การแจ้งซ่อมและขอบริการ)
-create table if not exists repair_tickets (
-  id uuid primary key default gen_random_uuid(),
-  ticket_number text unique not null,
-  machine_id uuid references machines(id) on delete set null,
-  factory_id uuid references factories(id) on delete set null,
-  customer_name text not null,
-  contact_phone text not null,
-  contact_email text,
-  issue_type text not null,
-  urgency text default 'medium' check (urgency in ('low', 'medium', 'high', 'critical')),
-  preferred_time text,
-  description text not null,
-  media_urls jsonb default '[]'::jsonb,
-  status text default 'submitted' check (status in ('submitted', 'assigned', 'in_progress', 'pending_approval', 'completed', 'cancelled')),
-  assigned_technician text,
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
+-- ---------- Locations & Assets ----------
+CREATE TABLE locations (
+    id        SERIAL PRIMARY KEY,
+    parent_id INT REFERENCES locations(id) ON DELETE SET NULL,  -- โรงงาน > อาคาร > ชั้น > ห้อง
+    name      VARCHAR(150) NOT NULL,
+    code      VARCHAR(30) UNIQUE,
+    address   TEXT
 );
 
--- 4. FIELD SERVICE REPORTS (รายงานหน้างานสำหรับช่าง)
-create table if not exists service_reports (
-  id uuid primary key default gen_random_uuid(),
-  report_number text unique not null,
-  ticket_id uuid references repair_tickets(id) on delete set null,
-  machine_id uuid references machines(id) on delete set null,
-  technician_name text not null,
-  service_date date default current_date,
-  service_type text default 'corrective' check (service_type in ('corrective', 'preventive', 'inspection')),
-  summary_findings text,
-  action_taken text,
-  before_photos jsonb default '[]'::jsonb,
-  after_photos jsonb default '[]'::jsonb,
-  measurements jsonb default '{}'::jsonb,
-  parts_used jsonb default '[]'::jsonb,
-  customer_signature text,
-  customer_signed_by text,
-  customer_signed_at timestamptz,
-  status text default 'draft' check (status in ('draft', 'submitted', 'acknowledged')),
-  created_at timestamptz default now()
+CREATE TABLE asset_categories (
+    id   SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE      -- เช่น เครื่องจักร, ระบบไฟฟ้า, HVAC, ยานพาหนะ
 );
 
--- 5. PREVENTIVE MAINTENANCE SCHEDULES (กำหนดการบำรุงรักษาเชิงป้องกัน)
-create table if not exists pm_schedules (
-  id uuid primary key default gen_random_uuid(),
-  machine_id uuid references machines(id) on delete cascade,
-  title text not null,
-  frequency_days integer default 90,
-  due_date date not null,
-  checklist jsonb default '[]'::jsonb,
-  status text default 'upcoming' check (status in ('upcoming', 'due_soon', 'overdue', 'completed')),
-  last_completed_at timestamptz,
-  created_at timestamptz default now()
+CREATE TABLE assets (
+    id              SERIAL PRIMARY KEY,
+    asset_code      VARCHAR(50) NOT NULL UNIQUE,
+    name            VARCHAR(150) NOT NULL,
+    category_id     INT REFERENCES asset_categories(id) ON DELETE SET NULL,
+    location_id     INT REFERENCES locations(id) ON DELETE SET NULL,
+    manufacturer    VARCHAR(100),
+    model           VARCHAR(100),
+    serial_number   VARCHAR(100),
+    purchase_date   DATE,
+    warranty_expiry DATE,
+    status          asset_status NOT NULL DEFAULT 'active',
+    notes           TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 6. SPARE PARTS INVENTORY (คลังอะไหล่)
-create table if not exists spare_parts (
-  id uuid primary key default gen_random_uuid(),
-  part_number text unique not null,
-  name text not null,
-  category text,
-  unit_price numeric(12, 2) not null default 0,
-  stock_quantity integer not null default 0,
-  min_stock_level integer default 5,
-  unit text default 'ชิ้น',
-  compatible_machines jsonb default '[]'::jsonb,
-  created_at timestamptz default now()
+-- ---------- Maintenance Requests (ใบแจ้งซ่อม) ----------
+CREATE TABLE maintenance_requests (
+    id              SERIAL PRIMARY KEY,
+    request_no      VARCHAR(30) NOT NULL UNIQUE,         -- เช่น MR-2026-00001
+    title           VARCHAR(200) NOT NULL,
+    description     TEXT NOT NULL,
+    requester_id    INT NOT NULL REFERENCES users(id),
+    asset_id        INT REFERENCES assets(id) ON DELETE SET NULL,
+    location_id     INT REFERENCES locations(id) ON DELETE SET NULL,
+    priority        priority_level NOT NULL DEFAULT 'medium',
+    status          request_status NOT NULL DEFAULT 'new',
+    reviewed_by     INT REFERENCES users(id),
+    reviewed_at     TIMESTAMPTZ,
+    reject_reason   TEXT,
+    desired_date    DATE,                                -- วันที่ต้องการให้เสร็จ
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 7. QUOTATIONS & RFQ (ใบเสนอราคาและคำขอราคา)
-create table if not exists quotations (
-  id uuid primary key default gen_random_uuid(),
-  quotation_number text unique not null,
-  customer_name text not null,
-  company_name text not null,
-  contact_email text,
-  contact_phone text,
-  ticket_id uuid references repair_tickets(id) on delete set null,
-  items jsonb default '[]'::jsonb,
-  subtotal numeric(12, 2) default 0,
-  discount numeric(12, 2) default 0,
-  vat numeric(12, 2) default 0,
-  total_amount numeric(12, 2) default 0,
-  notes text,
-  status text default 'requested' check (status in ('requested', 'drafting', 'sent_to_client', 'approved', 'rejected', 'preparing_parts', 'delivered')),
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
+-- ---------- Work Orders (ใบสั่งงาน) ----------
+CREATE TABLE work_orders (
+    id              SERIAL PRIMARY KEY,
+    wo_no           VARCHAR(30) NOT NULL UNIQUE,         -- เช่น WO-2026-00001
+    request_id      INT REFERENCES maintenance_requests(id) ON DELETE SET NULL,
+    asset_id        INT REFERENCES assets(id) ON DELETE SET NULL,
+    title           VARCHAR(200) NOT NULL,
+    description     TEXT,
+    work_type       work_type NOT NULL DEFAULT 'corrective',
+    priority        priority_level NOT NULL DEFAULT 'medium',
+    status          work_order_status NOT NULL DEFAULT 'open',
+    created_by      INT NOT NULL REFERENCES users(id),
+    assigned_to     INT REFERENCES users(id),            -- ช่างหลักที่รับผิดชอบ
+    planned_start   TIMESTAMPTZ,
+    planned_end     TIMESTAMPTZ,
+    actual_start    TIMESTAMPTZ,
+    actual_end      TIMESTAMPTZ,
+    root_cause      TEXT,
+    resolution      TEXT,
+    verified_by     INT REFERENCES users(id),
+    verified_at     TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (planned_end IS NULL OR planned_start IS NULL OR planned_end >= planned_start)
 );
 
--- Indexes for performance
-create index if not exists idx_machines_factory on machines(factory_id);
-create index if not exists idx_tickets_machine on repair_tickets(machine_id);
-create index if not exists idx_tickets_status on repair_tickets(status);
-create index if not exists idx_reports_ticket on service_reports(ticket_id);
-create index if not exists idx_pm_machine on pm_schedules(machine_id);
-create index if not exists idx_quotations_status on quotations(status);
+-- ช่างหลายคนต่อ 1 ใบสั่งงาน
+CREATE TABLE work_order_assignees (
+    work_order_id INT NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,
+    user_id       INT NOT NULL REFERENCES users(id),
+    assigned_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (work_order_id, user_id)
+);
 
--- Enable Row Level Security (RLS)
-alter table factories enable row level security;
-alter table machines enable row level security;
-alter table repair_tickets enable row level security;
-alter table service_reports enable row level security;
-alter table pm_schedules enable row level security;
-alter table spare_parts enable row level security;
-alter table quotations enable row level security;
+-- งานย่อย / checklist
+CREATE TABLE work_order_tasks (
+    id            SERIAL PRIMARY KEY,
+    work_order_id INT NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,
+    seq           INT NOT NULL DEFAULT 1,
+    description   TEXT NOT NULL,
+    status        task_status NOT NULL DEFAULT 'todo',
+    completed_by  INT REFERENCES users(id),
+    completed_at  TIMESTAMPTZ
+);
 
--- Default permissive policies for API backend with anon/publishable access or authenticated service
-create policy "Allow all operations for service backend" on factories for all using (true) with check (true);
-create policy "Allow all operations for service backend" on machines for all using (true) with check (true);
-create policy "Allow all operations for service backend" on repair_tickets for all using (true) with check (true);
-create policy "Allow all operations for service backend" on service_reports for all using (true) with check (true);
-create policy "Allow all operations for service backend" on pm_schedules for all using (true) with check (true);
-create policy "Allow all operations for service backend" on spare_parts for all using (true) with check (true);
-create policy "Allow all operations for service backend" on quotations for all using (true) with check (true);
+-- บันทึกเวลาทำงานของช่าง
+CREATE TABLE time_logs (
+    id            SERIAL PRIMARY KEY,
+    work_order_id INT NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,
+    user_id       INT NOT NULL REFERENCES users(id),
+    start_time    TIMESTAMPTZ NOT NULL,
+    end_time      TIMESTAMPTZ,
+    note          TEXT,
+    CHECK (end_time IS NULL OR end_time >= start_time)
+);
 
--- ================================================================
--- INITIAL SEED DATA
--- ================================================================
+-- ---------- Parts / Inventory ----------
+CREATE TABLE suppliers (
+    id      SERIAL PRIMARY KEY,
+    name    VARCHAR(150) NOT NULL,
+    contact VARCHAR(150),
+    phone   VARCHAR(30),
+    email   VARCHAR(150)
+);
 
-insert into factories (id, code, name, location, contact_person, contact_phone) values
-  ('a1000000-0000-0000-0000-000000000001', 'FT-BKK-01', 'โรงงานบางนา อุตสาหกรรมชิ้นส่วนยานยนต์', 'สมุทรปราการ', 'คุณอนุรักษ์', '081-445-8899'),
-  ('a1000000-0000-0000-0000-000000000002', 'FT-RYG-02', 'โรงงานมาบตาพุด เคมีภัณฑ์และปิโตรเคมี', 'ระยอง', 'คุณวิภาวรรณ', '089-112-3344'),
-  ('a1000000-0000-0000-0000-000000000003', 'FT-AYT-03', 'โรงงานนวนคร อิเล็กทรอนิกส์และเซมิคอนดักเตอร์', 'ปทุมธานี', 'คุณสมเกียรติ', '086-778-9900')
-on conflict (code) do nothing;
+CREATE TABLE parts (
+    id           SERIAL PRIMARY KEY,
+    part_code    VARCHAR(50) NOT NULL UNIQUE,
+    name         VARCHAR(150) NOT NULL,
+    unit         VARCHAR(20) NOT NULL DEFAULT 'pcs',
+    unit_cost    NUMERIC(12,2) NOT NULL DEFAULT 0,
+    stock_qty    NUMERIC(12,2) NOT NULL DEFAULT 0,
+    min_stock    NUMERIC(12,2) NOT NULL DEFAULT 0,
+    supplier_id  INT REFERENCES suppliers(id) ON DELETE SET NULL
+);
 
-insert into machines (id, factory_id, name, serial_number, model, brand, department, installation_date, status, next_pm_date, last_service_date, specs, qr_code) values
-  ('b1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', 'เครื่องกลึง CNC 5 แกน (Line A)', 'CNC-5AX-2023-018', 'VX-500 Pro', 'Mazak', 'แผนก Machining', '2023-03-15', 'operational', '2026-11-15', '2026-08-10', '{"power": "15kW", "max_rpm": 12000, "pressure": "7 Bar"}'::jsonb, 'QR-CNC-018'),
-  ('b1000000-0000-0000-0000-000000000002', 'a1000000-0000-0000-0000-000000000001', 'ปั๊มไฮดรอลิกแรงดันสูง Press 500T', 'HYD-PUMP-500T-04', 'HP-500H', 'Rexroth', 'แผนก Pressing', '2022-07-20', 'warning', '2026-10-18', '2026-07-12', '{"flow_rate": "180 L/min", "oil_temp": "68C", "pressure": "250 Bar"}'::jsonb, 'QR-HYD-500T'),
-  ('b1000000-0000-0000-0000-000000000003', 'a1000000-0000-0000-0000-000000000002', 'Air Compressor สกรูอุตสาหกรรม 75kW', 'AC-SCREW-75-09', 'Atlas-GA75', 'Atlas Copco', 'ระบบ Utility & พลังงาน', '2021-11-10', 'operational', '2026-12-01', '2026-09-02', '{"pressure_bar": 8.5, "dewpoint": "3C", "cooling": "Air-cooled"}'::jsonb, 'QR-COMP-75'),
-  ('b1000000-0000-0000-0000-000000000004', 'a1000000-0000-0000-0000-000000000003', 'หุ่นยนต์เชื่อมประกอบ Robotic Arm #2', 'ROBOT-WELD-6AX-11', 'KR-CYBERTECH', 'KUKA', 'แผนก Robotic Assembly', '2024-01-18', 'breakdown', '2026-10-08', '2026-08-25', '{"payload": "16kg", "reach": "2013mm", "repeatability": "0.04mm"}'::jsonb, 'QR-ROBOT-W11')
-on conflict (serial_number) do nothing;
+CREATE TABLE work_order_parts (
+    id            SERIAL PRIMARY KEY,
+    work_order_id INT NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,
+    part_id       INT NOT NULL REFERENCES parts(id),
+    quantity      NUMERIC(12,2) NOT NULL CHECK (quantity > 0),
+    unit_cost     NUMERIC(12,2) NOT NULL,              -- เก็บราคา ณ เวลาที่ใช้
+    used_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
-insert into spare_parts (id, part_number, name, category, unit_price, stock_quantity, min_stock_level, unit) values
-  ('c1000000-0000-0000-0000-000000000001', 'SP-SEAL-REX-01', 'ชุดโอริงและซีลกันรั่วไฮดรอลิก Rexroth 60mm', 'Hydraulic Seals', 3200.00, 18, 5, 'ชุด'),
-  ('c1000000-0000-0000-0000-000000000002', 'SP-FILT-OIL-75', 'ไส้กรองน้ำมันเครื่องอัดลม Atlas Copco GA75', 'Filtration', 4850.00, 12, 4, 'ชิ้น'),
-  ('c1000000-0000-0000-0000-000000000003', 'SP-SERVO-DRV-15', 'เซอร์โวมอเตอร์ไดรฟ์ 15kW Yaskawa Sigma-7', 'Electrical & Drives', 38500.00, 3, 2, 'ตัว'),
-  ('c1000000-0000-0000-0000-000000000004', 'SP-BEAR-SKF-6310', 'ตลับลูกปืนความเร็วสูง SKF 6310-2RS1/C3', 'Bearings', 1450.00, 45, 10, 'ตลับ'),
-  ('c1000000-0000-0000-0000-000000000005', 'SP-SOL-VALVE-24V', 'โซลินอยด์วาล์ว 5/2 ทาง 24VDC SMC SY5120', 'Pneumatics', 2750.00, 22, 6, 'ตัว')
-on conflict (part_number) do nothing;
+-- ---------- Preventive Maintenance (PM) ----------
+CREATE TABLE pm_schedules (
+    id              SERIAL PRIMARY KEY,
+    asset_id        INT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    title           VARCHAR(200) NOT NULL,
+    description     TEXT,
+    interval_days   INT NOT NULL CHECK (interval_days > 0),
+    last_done_date  DATE,
+    next_due_date   DATE NOT NULL,
+    default_assignee INT REFERENCES users(id),
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE
+);
 
-insert into repair_tickets (id, ticket_number, machine_id, factory_id, customer_name, contact_phone, contact_email, issue_type, urgency, preferred_time, description, status, assigned_technician) values
-  ('d1000000-0000-0000-0000-000000000001', 'TK-2026-0042', 'b1000000-0000-0000-0000-000000000002', 'a1000000-0000-0000-0000-000000000001', 'สมศักดิ์ ผู้จัดการฝ่ายผลิต', '081-888-2233', 'somsak@bangna-parts.com', 'hydraulic', 'high', 'วันนี้ก่อน 14:00 น.', 'แรงดันไฮดรอลิกตกจาก 250 เหลือ 180 Bar มีเสียงหวีดและคราบน้ำมันซึมที่หัวปั๊ม', 'in_progress', 'ช่างกิตติศักดิ์ ชำนาญการ'),
-  ('d1000000-0000-0000-0000-000000000002', 'TK-2026-0043', 'b1000000-0000-0000-0000-000000000004', 'a1000000-0000-0000-0000-000000000003', 'ประสิทธิ์ หัวหน้าซ่อมบำรุง', '085-123-9999', 'prasit@nava-semi.co.th', 'electrical', 'critical', 'ด่วนที่สุด', 'หุ่นยนต์เชื่อมหยุดกะทันหัน ฟ้อง Alarm E-742 Servo Axis 3 Overload สั่งการไม่ได้', 'assigned', 'ช่างธนพล วิศวกรควบคุม')
-on conflict (ticket_number) do nothing;
+-- ---------- Collaboration ----------
+CREATE TABLE comments (
+    id            SERIAL PRIMARY KEY,
+    request_id    INT REFERENCES maintenance_requests(id) ON DELETE CASCADE,
+    work_order_id INT REFERENCES work_orders(id) ON DELETE CASCADE,
+    user_id       INT NOT NULL REFERENCES users(id),
+    body          TEXT NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (num_nonnulls(request_id, work_order_id) = 1)  -- ผูกกับอย่างใดอย่างหนึ่ง
+);
 
-insert into quotations (id, quotation_number, customer_name, company_name, contact_email, contact_phone, items, subtotal, discount, vat, total_amount, notes, status) values
-  ('e1000000-0000-0000-0000-000000000001', 'QT-2026-0105', 'คุณอนุรักษ์', 'โรงงานบางนา อุตสาหกรรมชิ้นส่วนยานยนต์', 'anurak@bangna.co.th', '081-445-8899',
-   '[{"name": "ชุดโอริงและซีลกันรั่วไฮดรอลิก Rexroth 60mm", "part_number": "SP-SEAL-REX-01", "quantity": 2, "unit_price": 3200, "total": 6400}, {"name": "ค่าบริการตรวจเช็คและเปลี่ยนชุดซีลหน้างาน", "part_number": "SRV-LABOR-01", "quantity": 1, "unit_price": 4500, "total": 4500}]'::jsonb,
-   10900.00, 500.00, 728.00, 11128.00, 'เสนอราคาพร้อมรับประกันงานซ่อม 90 วัน', 'sent_to_client')
-on conflict (quotation_number) do nothing;
+CREATE TABLE attachments (
+    id            SERIAL PRIMARY KEY,
+    request_id    INT REFERENCES maintenance_requests(id) ON DELETE CASCADE,
+    work_order_id INT REFERENCES work_orders(id) ON DELETE CASCADE,
+    uploaded_by   INT NOT NULL REFERENCES users(id),
+    file_name     VARCHAR(255) NOT NULL,
+    file_url      TEXT NOT NULL,                       -- path / URL ใน storage
+    mime_type     VARCHAR(100),
+    file_size     BIGINT,
+    uploaded_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (num_nonnulls(request_id, work_order_id) = 1)
+);
+
+-- ประวัติการเปลี่ยนสถานะ (audit trail)
+CREATE TABLE status_history (
+    id            BIGSERIAL PRIMARY KEY,
+    request_id    INT REFERENCES maintenance_requests(id) ON DELETE CASCADE,
+    work_order_id INT REFERENCES work_orders(id) ON DELETE CASCADE,
+    old_status    VARCHAR(30),
+    new_status    VARCHAR(30) NOT NULL,
+    changed_by    INT REFERENCES users(id),
+    note          TEXT,
+    changed_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (num_nonnulls(request_id, work_order_id) = 1)
+);
+
+CREATE TABLE notifications (
+    id         BIGSERIAL PRIMARY KEY,
+    user_id    INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title      VARCHAR(200) NOT NULL,
+    message    TEXT,
+    link_url   TEXT,
+    is_read    BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ---------- Indexes ----------
+CREATE INDEX idx_requests_status     ON maintenance_requests(status);
+CREATE INDEX idx_requests_requester  ON maintenance_requests(requester_id);
+CREATE INDEX idx_requests_asset      ON maintenance_requests(asset_id);
+CREATE INDEX idx_wo_status           ON work_orders(status);
+CREATE INDEX idx_wo_assigned_to      ON work_orders(assigned_to);
+CREATE INDEX idx_wo_request          ON work_orders(request_id);
+CREATE INDEX idx_wo_planned_start    ON work_orders(planned_start);
+CREATE INDEX idx_assets_location     ON assets(location_id);
+CREATE INDEX idx_time_logs_wo        ON time_logs(work_order_id);
+CREATE INDEX idx_pm_next_due         ON pm_schedules(next_due_date) WHERE is_active;
+CREATE INDEX idx_notifications_user  ON notifications(user_id, is_read);
+CREATE INDEX idx_status_history_req  ON status_history(request_id);
+CREATE INDEX idx_status_history_wo   ON status_history(work_order_id);
+
+-- ---------- Auto-update updated_at ----------
+CREATE OR REPLACE FUNCTION set_updated_at() RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_users_updated    BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_assets_updated   BEFORE UPDATE ON assets
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_requests_updated BEFORE UPDATE ON maintenance_requests
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_wo_updated       BEFORE UPDATE ON work_orders
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
